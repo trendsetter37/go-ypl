@@ -93,7 +93,7 @@ func generateCodesFromCount(pcount map[uint16]uint64, ccount map[uint16]uint64, 
         if i != 21 {
             newComb := []*huffman.Node{}
             for _, v := range cleaves {
-                if uint16(v.Value) < Combinations[i] {
+                if uint16(v.Value) < combinations[i] {
                     newComb = append(newComb, v)
                 }
             }
@@ -105,7 +105,7 @@ func generateCodesFromCount(pcount map[uint16]uint64, ccount map[uint16]uint64, 
         if i != 0 {
             newIter := []*huffman.Node{}
             for _, v := range ileaves {
-                if uint16(v.Value) < Permutations[i] {
+                if uint16(v.Value) < iterations[i] {
                     newIter = append(newIter, v)
                 }
             }
@@ -122,11 +122,9 @@ func init() {
     pCodes = make(Codes, 22)
     pBits = make(Bits, 22)
     for i := 0; i < 22; i += 1 {
-        //cTrees[i] = &huffman.Node{}
-        cCodes[i] = make(Codes, Combinations[i])
-        cBits[i] = make(Bits, Combinations[i])
-        //iTrees[i] = &huffman.Node{}
-        iCodes[i] = make(Codes, Permutations[i])
-        iBits[i] = make(Bits, Permutations[i])
+        cCodes[i] = make(Codes, combinations[i])
+        cBits[i] = make(Bits, combinations[i])
+        iCodes[i] = make(Codes, iterations[i])
+        iBits[i] = make(Bits, iterations[i])
     }
 }

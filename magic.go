@@ -5,7 +5,7 @@ import "sort"
 // These numbers can be gotten with math, but it is easier to staticly encode them
 // All ordering is vital
 // Magic combinatorial group descriptors
-var Groups = [22][8]uint8 {
+var permutations = [22][8]uint8 {
     [8]uint8{0, 0, 0, 0, 0, 0, 0, 8},
     [8]uint8{0, 0, 0, 0, 0, 0, 1, 7},
     [8]uint8{0, 0, 0, 0, 0, 0, 2, 6},
@@ -29,7 +29,35 @@ var Groups = [22][8]uint8 {
     [8]uint8{0, 1, 1, 1, 1, 1, 1, 2},
     [8]uint8{1, 1, 1, 1, 1, 1, 1, 1},
 }
-var Permutations = [22]uint16 {
+
+// combination profiles
+var combinations = [22]uint16 {
+    8,
+    56,
+    56,
+    168,
+    56,
+    336,
+    280,
+    28,
+    336,
+    168,
+    840,
+    280,
+    168,
+    420,
+    840,
+    1120,
+    168,
+    70,
+    560,
+    420,
+    56,
+    1,
+}
+
+// iteration profiles
+var iterations = [22]uint16 {
     1,
     8,
     28,
@@ -53,31 +81,21 @@ var Permutations = [22]uint16 {
     20160,
     40320,
 }
-var Combinations = [22]uint16 {
-    8,
-    56,
-    56,
-    168,
-    56,
-    336,
-    280,
-    28,
-    336,
-    168,
-    840,
-    280,
-    168,
-    420,
-    840,
-    1120,
-    168,
-    70,
-    560,
-    420,
-    56,
-    1,
-}
-var Offsets = [22]uint32 {
+
+/*
+  Offsets are only used when converting from the PCI rank to the original data.
+  When we populate |pci|, we just stack all the data from the sorted PCI ranks into one list and
+  use this table as a multiplier to grab the location of our original data.
+  It is essentially a big brute-forced cheatsheet of answers for the program.
+
+  I have been using the list visually to help with the code, but the list could be generated like:
+    offsets := [22]uint32{}
+    offsets[0] := 0
+    for i := 1; i < 22; i += 1 {
+      offsets[i] = combinations[i-1] * iterations[i-1]
+    }
+*/
+var offsets = [22]uint32 {
     0,
     8,
     456,
@@ -101,17 +119,51 @@ var Offsets = [22]uint32 {
     15607936,
     16736896,
 }
+/*
+  NOTE:
+  I believe it should be possible to get from the PCI rank to the original data *without* this
+  brute-forced cheat sheet by plugging in the appropriate symbols from the combinations against the
+  permutations table given it is an ordered list. The iterations might require actual iteration
+  through a shuffle. Both of those trigger my "this will probably run slower" alarms.
 
+  Nevertheless, I keep exploring this in my head. It would would allow all of the memory we use to,
+  optionally, be dropped. Thats pretty interesting as a mechanism to me.
+*/
+
+/*
+  These count tables are not currently used, but are exported. Ideally, I will be able to implement
+  an arithmetic coder for these codes instead of the huffman trees. That is the dream.
+
+  Each time a specific permutation is found, the count for that permutation is increased. The same
+  for the combination and iterations.
+
+  If you plan to use them, these do not account for the two outer edges of the |permutations|.
+  The two cases are:
+    |permutations[0]| has a single iteration. It has 8 combinations
+    |permutations[21]| has a single combination. It has 40320 iterations
+
+  With that in mind, a model based on these counts might want to remove those counters from the
+  totals.
+*/
 var PermCount = [22]uint32{}
 var CombCount = [1120]uint32{}
 var IterCount = [40320]uint32{}
 
+/*
+  These lists have a few things going on. They are used when converting to and from our PCI ranks.
+  When we read in our data, we are reading 3 bytes -- 24 bits of data. We shift that to a uint32 to
+  make it easier to lookup in memory. The value of the data is the index in these lists.
+
+  Helper functions are exported for usability as PCI2Data() and Data2PCI() which shows the usage of
+  these lists.
+*/
 var plist = [16777216]uint8{}
 var clist = [16777216]uint16{}
 var ilist = [16777216]uint16{}
 var pci = [16777216]uint32{}
 
-func compareIntSlice(a, b [8]uint8) bool {
+func comparePermutation(a, b [8]uint8) bool {
+    // return true if a == b else false
     for i := range a {
         if a[i] != b[i] {
             return false
@@ -121,6 +173,21 @@ func compareIntSlice(a, b [8]uint8) bool {
 }
 
 func unpack(s uint32) [8]uint8 {
+    /*
+      Take an uint32 and grab 24 bits starting from LSB. The example bitshifting that goes on.
+      Ex: Data == uint32(1382749)
+      s = 00010101 00011001 01011101
+      for {
+        // Last byte of |s|
+        e = 01011101
+        AND 00000111
+        e = 00000101
+        // using |e| as the index, iterate the occurance of the value
+        // s is now bitshifted 3 positions to the right to remove the value and the loop repeats
+        // s = 000101010001100101011101 -- in first iteration
+        s = 000000101010001100101011
+      }
+    */
     ret := [8]uint8{}
     for i := uint8(0); i < 8; i += 1 {
         e := uint8(s)
@@ -128,6 +195,7 @@ func unpack(s uint32) [8]uint8 {
         ret[e]++
         s >>= 3
     }
+    // We sort the values we found so that they are ordered and can be comared against |permutations|
     sort.Slice(ret[:], func(i, j int) bool { return ret[i] < ret[j] })
     return ret
 }
@@ -136,8 +204,8 @@ func whichPermutationGroup(data uint32) uint8 {
     dups := unpack(data)
     // All 24 bit numbers fall into one of the 22 permutation descriptors
     // Anything outside of that is un-possible
-    for i, v := range Groups {
-        if compareIntSlice(dups, v) {
+    for i, v := range permutations {
+        if comparePermutation(dups, v) {
             return uint8(i)
         }
     }
@@ -150,7 +218,7 @@ func Data2PCI(d uint32) (uint8, uint16, uint16){
 }
 
 func PCI2Data(p uint8, c uint16, i uint16) uint32 {
-    return pci[Offsets[p] + (uint32(c) * uint32(Permutations[p])) + uint32(i)]
+    return pci[offsets[p] + (uint32(c) * uint32(iterations[p])) + uint32(i)]
 }
 
 func ValidateIntegrity() {
@@ -180,19 +248,20 @@ func cial() {
     for data := uint32(0); data < 16777216; data += 1 {
         permutation := whichPermutationGroup(data)
         elements := uint32(len(pints[permutation]))
-        size := uint32(Permutations[permutation])
+        size := uint32(iterations[permutation])
 
         combination := elements / size
         iteration := elements % size
 
         // This counts as a safety checks right?
-        if permutation >= uint8(len(Permutations)) {
+        // permutations groups are always 22, but this shows whats happening clearer
+        if permutation >= uint8(len(permutations)) {
             panic("Permutation is borked")
         }
-        if combination >= uint32(Combinations[permutation]) {
+        if combination >= uint32(combinations[permutation]) {
             panic("Combination is borked")
         }
-        if iteration >= uint32(Permutations[permutation]) {
+        if iteration >= uint32(iterations[permutation]) {
             panic("Iteration is borked")
         }
 
