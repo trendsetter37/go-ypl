@@ -10,7 +10,9 @@ import (
 // I use uint16 throughout all the tree even though permutations needs only uint8. Ease of reading
 type ValueType uint16
 
+// Codes are the huffman codes store in a uint64, starting with MSB
 type Codes []uint64
+// Bits are paired with Codes and specify the number of bits to read out of Codes, starting with MSB
 type Bits []uint8
 
 // Only used for encoding process
@@ -56,41 +58,43 @@ func newHuffTree(counts []uint64) *huffman.Node {
 
 func populateCodes(root *huffman.Node, codes Codes, bits Bits) {
     // Used for building a list of all huffman codes for easy lookup when encoding
-	var traverse func(n *huffman.Node, code uint64, bits byte)
-	traverse = func(n *huffman.Node, code uint64, count byte) {
-		if n.Left == nil {
+    var traverse func(n *huffman.Node, code uint64, bits byte)
+    traverse = func(n *huffman.Node, code uint64, count byte) {
+        if n.Left == nil {
             v := uint16(n.Value)
             codes[v] = code
             bits[v] = count
-			return
-		}
-		count++
-		traverse(n.Left, code<<1, count)
-		traverse(n.Right, code<<1+1, count)
-	}
-	traverse(root, 0, 0)
+            return
+        }
+        count++
+        traverse(n.Left, code<<1, count)
+        traverse(n.Right, code<<1+1, count)
+    }
+    traverse(root, 0, 0)
 }
 
 func convertCountToLeaves(count map[uint16]uint64) []*huffman.Node {
     leaves := make([]*huffman.Node, len(count))
-	i := 0
-	for k, v := range count {
+    i := 0
+    for k, v := range count {
         leaves[i] = &huffman.Node{Value: huffman.ValueType(k), Count: int(v)}
-		i++
+        i++
     }
     sort.Stable(huffman.SortNodes(leaves))
     return leaves
 }
 
 func generateCodesFromCount(pcount map[uint16]uint64, ccount map[uint16]uint64, icount map[uint16]uint64) {
+    // Return leaves from counts, sorted in ascending order
     pleaves := convertCountToLeaves(pcount)
     cleaves := convertCountToLeaves(ccount)
     ileaves := convertCountToLeaves(icount)
 
+    // Build the huffman trees for the permutations and populate the codes for lookup during encode
     pTree = huffman.BuildSorted(pleaves)
     populateCodes(pTree, pCodes, pBits)
     for i := 0; i < 22; i += 1 {
-        if i != 21 {
+        if i != 21 { // |permutations[21]| has a single combination; no information to encode!
             newComb := []*huffman.Node{}
             for _, v := range cleaves {
                 if uint16(v.Value) < combinations[i] {
@@ -102,7 +106,7 @@ func generateCodesFromCount(pcount map[uint16]uint64, ccount map[uint16]uint64, 
                 populateCodes(cTrees[i], cCodes[i], cBits[i])
             }
         }
-        if i != 0 {
+        if i != 0 { // |permutations[0]| has a single iteration per combination; no information to encode!
             newIter := []*huffman.Node{}
             for _, v := range ileaves {
                 if uint16(v.Value) < iterations[i] {
@@ -119,6 +123,15 @@ func generateCodesFromCount(pcount map[uint16]uint64, ccount map[uint16]uint64, 
 
 func init() {
     fmt.Println("Say something!")
+
+    /*
+      Allocate the space for all the trees and codes. Some models will not use any of these, this
+      fact does not change the convience of having a statically sized list.
+
+      The encoding and decoding processes should not be requesting indexes which were never
+      populated. I would prefer to *enforce* this in code, but there are enough panic()'s spread
+      around to warm my heart.
+    */
     pCodes = make(Codes, 22)
     pBits = make(Bits, 22)
     for i := 0; i < 22; i += 1 {

@@ -4,7 +4,6 @@ import (
     "fmt"
     "io"
     "os"
-    //"bufio"
     bitstream "github.com/dgryski/go-bitstream"
 )
 
@@ -17,6 +16,8 @@ func check(e error) bool {
 }
 
 func readData(r io.Reader, cb func(uint32)) {
+    // Read 3 bytes from |r|
+    // If less than 3 bytes are read, pad the remaining bytes with 0b00000000
     var err error
     read24 := make([]uint8, 3)
     for {
@@ -34,48 +35,10 @@ func readData(r io.Reader, cb func(uint32)) {
            default:
                panic("I dont think this should happen")
         }
+        // Send |data| to our callback function; Success!
         cb(data)
     }
 }
-
-/*
-func main() {
-    fmt.Println("Hello there")
-    r, err := os.Open("/tmp/2")
-    defer r.Close()
-    check(err)
-    br := bitstream.NewReader(r)
-
-    w, err := os.OpenFile("/tmp/3", os.O_RDWR|os.O_CREATE, 0755)
-    defer w.Close()
-    check(err)
-
-    bytes := make([]uint8, 3)
-    for size := 0; size < 2; size += 1 {
-        data := uint32(0)
-        p := uint8(Decode(br))
-        c := uint16(0)
-        i := uint16(0)
-        if p == 21 {
-            bits, err := br.ReadBits(16)
-            check(err)
-            i = uint16(bits)
-        } else {
-            c = uint16(Decode(CTrees[p], br))
-            if p != 0 {
-                i = uint16(Decode(ITrees[p], br))
-            }
-        }
-        data = PCI2Data(p, c, i)
-        pos := uint32(16)
-        for i := uint32(0); i < 3; i += 1 {
-            bytes[i] = uint8(data >> pos)
-            pos -= 8
-        }
-        w.Write(bytes)
-    }
-}
-*/
 
 func main() {
     fmt.Println("Hello there")
