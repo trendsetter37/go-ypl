@@ -238,9 +238,17 @@ func PCI2Data(p uint8, c uint16, i uint16) uint32 {
 
 func ValidateIntegrity() {
     /*
-      The sole purpose of this function is to self-check our tables match up.
-      I am hoping this code doesn't break on different endian'd systems, if it does
-      this function should catch it immediately
+      This function has many purposes!
+      The actions performed here will check all possible values of the three least significant
+      bytes of an uint32. This is *all* possible data that the encoder could be asked to produce.
+      The fact that we can handle *everything* allows us to assume and enforce bounds all over the
+      place.
+
+      First we take the |data| and get its |p| |c| and |i| ranks. Data2PCI(data) makes that easy
+      Next, we take the pci ranks and decode them into our original data. PCI2Data(p, c, i)
+      returns our original data in the form of a uint32.
+      Finally, we have a compare that ensures both |data| and |pciData| match. This validates all
+      of the code that is used to generate those lists in one quick running function. Yay!
     */
     for data := uint32(0); data < 16777216; data += 1 {
         p, c, i := Data2PCI(data)
