@@ -228,6 +228,29 @@ var clist = [16777216]uint16{}
 var ilist = [16777216]uint16{}
 var pci = [16777216]uint32{}
 
+func Data2PCI(d uint32) (uint8, uint16, uint16){
+    return plist[d], clist[d], ilist[d]
+}
+
+func PCI2Data(p uint8, c uint16, i uint16) uint32 {
+    return pci[offsets[p] + (uint32(c) * uint32(iterations[p])) + uint32(i)]
+}
+
+func ValidateIntegrity() {
+    /*
+      The sole purpose of this function is to self-check our tables match up.
+      I am hoping this code doesn't break on different endian'd systems, if it does
+      this function should catch it immediately
+    */
+    for data := uint32(0); data < 16777216; data += 1 {
+        p, c, i := Data2PCI(data)
+        pciData := PCI2Data(p, c, i)
+        if pciData != data {
+            panic("Our plist, clist, ilist info doesn't match our pci info")
+        }
+    }
+}
+
 func comparePermutation(a, b [8]uint8) bool {
     // return true if a == b else false
     for i := range a {
@@ -277,29 +300,6 @@ func whichPermutationGroup(data uint32) uint8 {
     }
     panic("We did not find a match for our permutation group, something is terribly wrong")
     return 0 // I am a terrible programmer and go is not my... go-to language. Sam make compile. Sam sleep
-}
-
-func Data2PCI(d uint32) (uint8, uint16, uint16){
-    return plist[d], clist[d], ilist[d]
-}
-
-func PCI2Data(p uint8, c uint16, i uint16) uint32 {
-    return pci[offsets[p] + (uint32(c) * uint32(iterations[p])) + uint32(i)]
-}
-
-func ValidateIntegrity() {
-    /*
-      The sole purpose of this function is to self-check our tables match up.
-      I am hoping this code doesn't break on different endian'd systems, if it does
-      this function should catch it immediately
-    */
-    for data := uint32(0); data < 16777216; data += 1 {
-        p, c, i := Data2PCI(data)
-        pciData := PCI2Data(p, c, i)
-        if pciData != data {
-            panic("Our plist, clist, ilist info doesn't match our pci info")
-        }
-    }
 }
 
 func cial() {
