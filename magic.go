@@ -2,9 +2,31 @@ package main
 
 import "sort"
 
-// These numbers can be gotten with math, but it is easier to staticly encode them
-// All ordering is vital
-// Magic combinatorial group descriptors
+/*
+  These are the 22 permutation matches that 3-bytes (24-bits) can produce. Looking at them, they
+  make sense. I came about these numbers through brute-force, but visually reviewing them shows
+  that we can generate these matchings (in order).
+
+  An example:
+    Take a random number from the range 0 to 2^24 as "data". Represent it in 8 octal digits, pad
+    leading 0's when needed.
+
+    data = 0o63674163
+    If we count the occurance of each octal digit, we get a table that looks like this:
+
+      +-------+---+---+---+---+---+---+---+---+
+      | Data  | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+      +-------+---+---+---+---+---+---+---+---+
+      | Count | 0 | 1 | 0 | 2 | 1 | 0 | 3 | 1 |
+      +-------+---+---+---+---+---+---+---+---+
+
+    Sorting that count map will produce a list:
+      []uint8{3, 2, 1, 1, 1, 0, 0, 0}
+
+    That list is equal to |permutations[15]|
+
+    The 22 symbols we encode for the |p| in PCI abstractly represent these groupings.
+*/
 var permutations = [22][8]uint8 {
     [8]uint8{8, 0, 0, 0, 0, 0, 0, 0},
     [8]uint8{7, 1, 0, 0, 0, 0, 0, 0},
@@ -30,33 +52,77 @@ var permutations = [22][8]uint8 {
     [8]uint8{1, 1, 1, 1, 1, 1, 1, 1},
 }
 
-// combination profiles
+/*
+  We only have 22 permutation groups. Each permutation group has a specific number of combinations
+  associated with it. Visual means are most useful for me to explain again.
+
+  Taking |permutations[0]| as a start:
+    [8]uint8{8, 0, 0, 0, 0, 0, 0, 0}
+
+  That string says that all 8 octal digits are duplicates. Valid matching 24 bit values are:
+    0o00000000
+    0o11111111
+    0o22222222
+    0o33333333
+    0o44444444
+    0o55555555
+    0o66666666
+    0o77777777
+
+  There are only 8 combinations since there are only 8 possible octal values.
+  The first permutation group is also special in that it has a single iteration. (It doesn't mater
+  the order we return the octal digits in, all bits will match up)
+
+  Taking |permutations[1]|:
+    [8]uint8{7, 1, 0, 0, 0, 0, 0, 0}
+
+  This reads as 7 octal digits are the same, and one is different from those. Some matching values:
+    0o00000001
+    0o00000002
+    0o00000003
+    0o00200000
+    0o07000000
+    0o11111110
+    0o11111112
+    0o77707777
+
+  This group has lots of combinations and lots of iterations. The math used to calculate these
+  numbers for each group is based on |permutations| and combinitorial math
+*/
 var combinations = [22]uint16 {
-    8,
-    56,
-    56,
-    168,
-    56,
-    336,
-    280,
-    28,
-    336,
-    168,
-    840,
-    280,
-    168,
-    420,
-    840,
-    1120,
-    168,
-    70,
-    560,
-    420,
-    56,
-    1,
+    8,      // 8!/(1!*(8-1)!)
+    56,     // 7!/(1!*(7-1)!) * 8!/(1!*(8-1)!)
+    56,     // 8!/(2!*(8-2)!) * 2
+    168,    // 7!/(2!*(7-2)!) * 8!/(1!*(8-1)!)
+    56,     // 8!/(2!*(8-2)!) * 2
+    336,    // 6!/(1!*(6-1)!) * 8!/(2!*(8-2)!) * 2
+    280,    // 7!/(3!*(7-3)!) * 8!/(1!*(8-1)!)
+    28,     // 8!/(2!*(8-2)!)
+    336,    // 6!/(1!*(6-1)!) * 8!/(2!*(8-2)!) * 2
+    168,    // 8!/(3!*(8-3)!) * 3
+    840,    // 6!/(2!*(6-2)!) * 8!/(2!*(8-2)!) * 2
+    280,    // 7!/(4!*(7-4)!) * 8!/(1!*(8-1)!)
+    168,    // 8!/(3!*(8-3)!) * 3
+    420,    // 6!/(2!*(6-2)!) * 8!/(2!*(8-2)!)
+    840,    // 5!/(1!*(5-1)!) * 8!/(3!*(8-3)!) * 3
+    1120,   // 6!/(3!*(6-3)!) * 8!/(2!*(8-2)!) * 2
+    168,    // 7!/(5!*(7-5)!) * 8!/(1!*(8-1)!)
+    70,     // 8!/(4!*(8-4)!)
+    560,    // 5!/(2!*(5-2)!) * 8!/(3!*(8-3)!)
+    420,    // 6!/(4!*(6-4)!) * 8!/(2!*(8-2)!)
+    56,     // 7!/(6!*(7-6)!) * 8!/(1!*(8-1)!)
+    1,      // 8!/(8!*(8-8)!)
 }
 
-// iteration profiles
+/*
+  The iterations are calulated by some simple psuedo code based on |permutations|:
+
+    total = 0
+    for i in permutations[p] {
+        total *= permutations[i]!
+    }
+    iterations[p] = 8! / total
+*/
 var iterations = [22]uint16 {
     1,
     8,
